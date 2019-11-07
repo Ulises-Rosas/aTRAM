@@ -2,6 +2,8 @@
 
 import sqlite3
 import lib.db as db
+import lib.db_atram as db_atram
+import lib.db_preprocessor as db_preprocessor
 
 
 cxn = sqlite3.connect(':memory:')
@@ -10,11 +12,11 @@ cxn = sqlite3.connect(':memory:')
 def setUpModule():
     """Setup the database for testing."""
     cxn.execute("""ATTACH DATABASE ':memory:' AS aux""")
-    db.create_metadata_table(cxn, {})
-    db.create_sequences_table(cxn)
-    db.create_sra_blast_hits_table(cxn)
-    db.create_contig_blast_hits_table(cxn)
-    db.create_assembled_contigs_table(cxn)
+    db_preprocessor.create_metadata_table(cxn, {})
+    db_preprocessor.create_sequences_table(cxn)
+    db_atram.create_sra_blast_hits_table(cxn)
+    db_atram.create_contig_blast_hits_table(cxn)
+    db_atram.create_assembled_contigs_table(cxn)
 
 
 def test_get_db_name_01():

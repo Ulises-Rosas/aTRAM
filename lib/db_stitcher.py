@@ -1,4 +1,4 @@
-"""Handle database functions for the stitcher utility."""
+"""Database functions for the stitcher."""
 
 from lib.db import temp_db
 

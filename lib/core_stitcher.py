@@ -12,7 +12,7 @@ from collections import namedtuple, defaultdict
 import csv
 from glob import glob
 from Bio.SeqIO.FastaIO import SimpleFastaParser
-import lib.stitcher_db as db
+import lib.db_stitcher as db
 import lib.log as log
 import lib.util as util
 

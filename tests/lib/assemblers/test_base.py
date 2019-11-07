@@ -177,7 +177,7 @@ def test_run_03(error, info):
 
 
 @patch('lib.log.info')
-@patch('lib.db.sra_blast_hits_count')
+@patch('lib.db_atram.sra_blast_hits_count')
 def test_count_blast_hits_01(sra_blast_hits_count, info):
     """It handles no blast hits."""
     asm = build_assembler()
@@ -191,7 +191,7 @@ def test_count_blast_hits_01(sra_blast_hits_count, info):
 
 
 @patch('lib.log.info')
-@patch('lib.db.sra_blast_hits_count')
+@patch('lib.db_atram.sra_blast_hits_count')
 def test_count_blast_hits_02(sra_blast_hits_count, info):
     """It handles one blast hits."""
     asm = build_assembler()
@@ -242,7 +242,7 @@ def test_nothing_assembled_03(info):
 
 
 @patch('lib.log.info')
-@patch('lib.db.assembled_contigs_count')
+@patch('lib.db_atram.assembled_contigs_count')
 def test_assembled_contigs_count_01(assembled_contigs_count, info):
     """Handle when here are no contigs."""
     high_score = 5
@@ -269,7 +269,7 @@ def test_assembled_contigs_count_01(assembled_contigs_count, info):
 
 
 @patch('lib.log.info')
-@patch('lib.db.assembled_contigs_count')
+@patch('lib.db_atram.assembled_contigs_count')
 def test_assembled_contigs_count_02(assembled_contigs_count, info):
     """Handle when here is one contig."""
     high_score = 5
@@ -290,7 +290,7 @@ def test_assembled_contigs_count_02(assembled_contigs_count, info):
 
 
 @patch('lib.log.info')
-@patch('lib.db.iteration_overlap_count')
+@patch('lib.db_atram.iteration_overlap_count')
 def test_no_new_contigs_01(iteration_overlap_count, info):
     """It handles when there are new contigs."""
     count = 1
@@ -310,7 +310,7 @@ def test_no_new_contigs_01(iteration_overlap_count, info):
 
 
 @patch('lib.log.info')
-@patch('lib.db.iteration_overlap_count')
+@patch('lib.db_atram.iteration_overlap_count')
 def test_no_new_contigs_02(iteration_overlap_count, info):
     """It handles when there are no new contigs."""
     count = 1
