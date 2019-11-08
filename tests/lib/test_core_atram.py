@@ -97,13 +97,13 @@ def test_clean_database_01(
     create_sra_blast_hits_table.assert_called_once_with(dbh)
 
 
-@patch('lib.core_atram.blast_query_against_all_shards')
+@patch('lib.core_atram.blast_query')
 @patch('lib.core_atram.create_query_from_contigs')
 @patch('lib.core_atram.filter_contigs')
 def test_assembly_loop_iteration_01(
         filter_contigs,
         create_query_from_contigs,
-        blast_query_against_all_shards):
+        blast_query):
     """It iterates over the assembly processes."""
     args, _, assembler = set_up()
 
@@ -124,7 +124,7 @@ def test_assembly_loop_iteration_01(
 
     core_atram.assembly_loop_iteration(args, assembler)
 
-    blast_query_against_all_shards.assert_called_once_with(assembler)
+    blast_query.assert_called_once_with(assembler)
     assert assembler.count_blast_hits.call_count == 1
     assembler.no_new_contigs.assert_called_once_with(11)
 

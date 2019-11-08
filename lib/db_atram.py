@@ -5,32 +5,48 @@ import sqlite3
 
 # ######################## sra_blast_hits table ###############################
 
-def create_sra_blast_hits_table(cxn):
+def create_sra_blast_hits_table(cxn, schema='aux'):
     """Create a table to hold the blast hits for all iterations."""
-    cxn.executescript("""
-        DROP TABLE IF EXISTS aux.sra_blast_hits;
+    if schema != 'aux':
+        schema = 'main'
 
-        CREATE TABLE aux.sra_blast_hits (
+    cxn.executescript("""
+        DROP TABLE IF EXISTS {schema}.sra_blast_hits;
+
+        CREATE TABLE {schema}.sra_blast_hits (
             iteration INTEGER,
             seq_name  TEXT,
             seq_end   TEXT,
             shard     TEXT);
 
-        CREATE INDEX aux.sra_blast_hits_index
+        CREATE INDEX {schema}.sra_blast_hits_index
             ON sra_blast_hits (iteration, seq_name, seq_end);
-        """)
+        """.format(schema=schema))
 
 
 def insert_blast_hit_batch(cxn, batch):
     """Insert a batch of blast hit records into the database."""
     sql = """
-        INSERT INTO aux.sra_blast_hits
+        INSERT INTO sra_blast_hits
                     (iteration, seq_end, seq_name, shard)
                     VALUES (?, ?, ?, ?)
         """
     if batch:
         with cxn:
             cxn.executemany(sql, batch)
+
+
+def transfer_blast_hits(cxn, iteration):
+    """Insert a batch of blast hit records into the database."""
+    sql = """
+        INSERT INTO aux.sra_blast_hits
+             SELECT *
+               FROM subprocess.sra_blast_hits
+              WHERE iteration = ?
+        """
+    with cxn:
+        cxn.execute(sql, (iteration, ))
+        cxn.commit()
 
 
 def sra_blast_hits_count(cxn, iteration):
@@ -81,12 +97,15 @@ def get_blast_hits_by_end_count(cxn, iteration, end_count):
 
 # ####################### contig_blast_hits table #############################
 
-def create_contig_blast_hits_table(cxn):
+def create_contig_blast_hits_table(cxn, schema='aux'):
     """Create a table to hold blast hits against the contigs."""
-    cxn.executescript("""
-        DROP TABLE IF EXISTS aux.contig_blast_hits;
+    if schema != 'aux':
+        schema = 'main'
 
-        CREATE TABLE aux.contig_blast_hits (
+    cxn.executescript("""
+        DROP TABLE IF EXISTS {schema}.contig_blast_hits;
+
+        CREATE TABLE {schema}.contig_blast_hits (
             iteration    INTEGER,
             contig_id    TEXT,
             description  TEXT,
@@ -99,9 +118,9 @@ def create_contig_blast_hits_table(cxn):
             hit_to       INTEGER,
             hit_strand   TEXT);
 
-        CREATE INDEX aux.contig_blast_hits_index
+        CREATE INDEX {schema}.contig_blast_hits_index
             ON contig_blast_hits (iteration, bit_score, len);
-        """)
+        """.format(schema=schema))
 
 
 def insert_contig_hit_batch(cxn, batch):
@@ -134,12 +153,15 @@ def get_contig_blast_hits(cxn, iteration):
 
 # ####################### assembled_contigs table #############################
 
-def create_assembled_contigs_table(cxn):
+def create_assembled_contigs_table(cxn, schema='aux'):
     """Create a table to hold the assembled contigs."""
-    cxn.executescript("""
-        DROP TABLE IF EXISTS aux.assembled_contigs;
+    if schema != 'aux':
+        schema = 'main'
 
-        CREATE TABLE aux.assembled_contigs (
+    cxn.executescript("""
+        DROP TABLE IF EXISTS {schema}.assembled_contigs;
+
+        CREATE TABLE {schema}.assembled_contigs (
             iteration    INTEGER,
             contig_id    TEXT,
             seq          TEXT,
@@ -153,9 +175,9 @@ def create_assembled_contigs_table(cxn):
             hit_to       INTEGER,
             hit_strand   TEXT);
 
-        CREATE INDEX aux.assembled_contigs_index
+        CREATE INDEX {schema}.assembled_contigs_index
                   ON assembled_contigs (iteration, contig_id);
-        """)
+        """.format(schema=schema))
 
 
 def assembled_contigs_count(cxn, iteration, bit_score, length):

@@ -7,15 +7,16 @@ from multiprocessing import Pool
 from Bio import SeqIO
 import lib.db as db
 import lib.db_atram as db_atram
+import lib.subprocess_atram as subprocess_atram
 import lib.log as log
 import lib.bio as bio
 import lib.util as util
 import lib.blast as blast
-import lib.assembler as assembly
+import lib.assembler as assembler
 
 
 def assemble(args):
-    """Loop thru every blast/query pair and run an assembly for each one."""
+    """Loop thru every blast/query pair and run an assembler for each one."""
     with util.make_temp_dir(
             where=args['temp_dir'],
             prefix='atram_',
@@ -33,36 +34,36 @@ def assemble(args):
 
                     log.setup(args['log_file'], blast_db, query)
 
-                    assembler = assembly.factory(args, cxn)
+                    asm = assembler.factory(args, cxn)
 
                     try:
-                        assembly_loop(args, assembler, blast_db, query)
+                        assembly_loop(args, asm, blast_db, query)
                     except (TimeoutError, RuntimeError):
                         pass
                     except Exception as err:  # pylint: disable=broad-except
                         log.error('Exception: {}'.format(err))
                     finally:
-                        assembler.write_final_output(blast_db, query)
+                        asm.write_final_output(blast_db, query)
 
                     db.aux_detach(cxn)
 
 
-def assembly_loop(args, assembler, blast_db, query):
+def assembly_loop(args, asm, blast_db, query):
     """Iterate over the assembly processes."""
-    for iteration in range(1, assembler.args['iterations'] + 1):
+    for iteration in range(1, asm.args['iterations'] + 1):
         log.info('aTRAM blast DB = "{}", query = "{}", iteration {}'.format(
             blast_db, split(query)[1], iteration))
 
-        assembler.init_iteration(blast_db, query, iteration)
+        asm.init_iteration(blast_db, query, iteration)
 
         with util.make_temp_dir(
                 where=args['temp_dir'],
-                prefix=assembler.file_prefix(),
+                prefix=asm.file_prefix(),
                 keep=args['keep_temp_dir']) as iter_dir:
 
-            assembler.setup_files(iter_dir)
+            asm.setup_files(iter_dir)
 
-            query = assembly_loop_iteration(args, assembler)
+            query = assembly_loop_iteration(args, asm)
 
             if not query:
                 break
@@ -71,32 +72,32 @@ def assembly_loop(args, assembler, blast_db, query):
         log.info('All iterations completed')
 
 
-def assembly_loop_iteration(args, assembler):
+def assembly_loop_iteration(args, asm):
     """One iteration of the assembly loop."""
-    blast_query_against_all_shards(assembler)
+    blast_query(asm)
 
-    count = assembler.count_blast_hits()
-    if assembler.blast_only or count == 0:
+    count = asm.count_blast_hits()
+    if asm.blast_only or count == 0:
         return False
 
-    assembler.write_input_files()
+    asm.write_input_files()
 
-    assembler.run()
+    asm.run()
 
-    if assembler.nothing_assembled():
+    if asm.nothing_assembled():
         return False
 
-    high_score = filter_contigs(assembler)
+    high_score = filter_contigs(asm)
 
-    count = assembler.assembled_contigs_count(high_score)
+    count = asm.assembled_contigs_count(high_score)
 
     if not count:
         return False
 
-    if assembler.no_new_contigs(count):
+    if asm.no_new_contigs(count):
         return False
 
-    return create_query_from_contigs(args, assembler)
+    return create_query_from_contigs(args, asm)
 
 
 def split_queries(args):
@@ -149,7 +150,21 @@ def clean_database(cxn):
     db_atram.create_assembled_contigs_table(cxn)
 
 
-def blast_query_against_all_shards(assembler):
+def clean_subprocess_databases(asm, all_shards):
+    """Create database tables for the subprocess databases."""
+    if asm.state['iteration'] > 1:
+        return
+
+    for shard in all_shards:
+        with db.subprocess_db(
+                asm.args['temp_dir'],
+                asm.state['blast_db'],
+                asm.state['query_target'],
+                shard) as cxn:
+            db_atram.create_sra_blast_hits_table(cxn, 'subprocess')
+
+
+def blast_query(asm):
     """
     Blast the query against the SRA databases.
 
@@ -157,102 +172,90 @@ def blast_query_against_all_shards(assembler):
     sequences and reduce the output into one fasta file.
     """
     log.info('Blasting query against shards: iteration {}'.format(
-        assembler.state['iteration']))
+        asm.state['iteration']))
 
-    all_shards = shard_fraction(assembler)
+    all_shards = shard_fraction(asm)
+    clean_subprocess_databases(asm, all_shards)
 
-    with Pool(processes=assembler.args['cpus']) as pool:
+    with Pool(processes=asm.args['cpus']) as pool:
         results = [pool.apply_async(
-            blast_query_against_one_shard,
-            (assembler.args, assembler.simple_state(), shard))
+            subprocess_atram.blast_query,
+            (asm.args, asm.simple_state(), shard))
                    for shard in all_shards]
         all_results = [result.get() for result in results]
+
+    transfer_blast_hits(asm, all_shards)
+
     log.info('All {} blast results completed'.format(len(all_results)))
 
 
-def shard_fraction(assembler):
+def transfer_blast_hits(asm, all_shards):
+    """Copy blast results from shard databases into the main auxiliary DB."""
+    cxn = asm.state['cxn']
+    for shard in all_shards:
+        db.subprocess_attach(
+            cxn,
+            asm.args['temp_dir'],
+            asm.state['blast_db'],
+            asm.state['query_target'],
+            shard)
+        db_atram.transfer_blast_hits(cxn, asm.state['iteration'])
+        db.subprocess_detach(cxn)
+
+
+def shard_fraction(asm):
     """
     Get the shards we are using.
 
     We may not want the entire DB for highly redundant libraries.
     """
-    all_shards = blast.all_shard_paths(assembler.state['blast_db'])
-    last_index = int(len(all_shards) * assembler.args['fraction'])
+    all_shards = blast.all_shard_paths(asm.state['blast_db'])
+    last_index = int(len(all_shards) * asm.args['fraction'])
     return all_shards[:last_index]
 
 
-def blast_query_against_one_shard(args, state, shard):
-    """
-    Blast the query against one blast DB shard.
-
-    Then write the results to the database.
-    """
-    output_file = blast.output_file_name(state['iter_dir'], shard)
-
-    blast.against_sra(args, state, output_file, shard)
-
-    with db.connect(state['blast_db']) as cxn:
-        db.aux_db(
-            cxn,
-            args['temp_dir'],
-            state['blast_db'],
-            state['query_target'])
-
-        shard = basename(shard)
-
-        batch = []
-
-        hits = blast.hits(output_file)
-        is_single_end = db.is_single_end(cxn)
-        for hit in hits:
-            seq_name, seq_end = blast.parse_blast_title(
-                hit['title'], is_single_end)
-            batch.append((state['iteration'], seq_end, seq_name, shard))
-        db_atram.insert_blast_hit_batch(cxn, batch)
-
-
-def filter_contigs(assembler):
+def filter_contigs(asm):
     """Remove junk from the assembled contigs."""
     log.info('Saving assembled contigs: iteration {}'.format(
-        assembler.state['iteration']))
+        asm.state['iteration']))
 
     blast_db = blast.temp_db_name(
-        assembler.state['iter_dir'], assembler.state['blast_db'])
+        asm.state['iter_dir'], asm.state['blast_db'])
 
     hits_file = blast.output_file_name(
-        assembler.state['iter_dir'], assembler.state['blast_db'])
+        asm.state['iter_dir'], asm.state['blast_db'])
 
     blast.create_db(
-        assembler.state['iter_dir'], assembler.file['output'], blast_db)
+        asm.state['iter_dir'], asm.file['output'], blast_db)
 
     blast.against_contigs(
         blast_db,
-        assembler.state['query_target'],
+        asm.state['query_target'],
         hits_file,
-        protein=assembler.args['protein'],
-        db_gencode=assembler.args['db_gencode'],
-        temp_dir=assembler.args['temp_dir'],
-        timeout=assembler.args['timeout'])
+        protein=asm.args['protein'],
+        db_gencode=asm.args['db_gencode'],
+        temp_dir=asm.args['temp_dir'],
+        timeout=asm.args['timeout'])
 
-    save_blast_against_contigs(assembler, hits_file)
+    save_blast_against_contigs(asm, hits_file)
 
     all_hits = {row['contig_id']: row
                 for row
                 in db_atram.get_contig_blast_hits(
-                    assembler.state['cxn'],
-                    assembler.state['iteration'])}
+                    asm.state['cxn'],
+                    asm.state['iteration'])}
 
-    return save_contigs(assembler, all_hits)
+    return save_contigs(asm, all_hits)
 
 
-def save_blast_against_contigs(assembler, hits_file):
+def save_blast_against_contigs(asm, hits_file):
     """Save all of the blast hits."""
     batch = []
 
     for hit in blast.hits(hits_file):
-        contig_id = assembler.parse_contig_id(hit['title'])
+        contig_id = asm.parse_contig_id(hit['title'])
         batch.append((
-            assembler.state['iteration'],
+            asm.state['iteration'],
             contig_id,
             hit['title'],
             hit['bit_score'],
@@ -264,20 +267,20 @@ def save_blast_against_contigs(assembler, hits_file):
             hit['hit_to'],
             hit.get('hit_strand', '')))
 
-    db_atram.insert_contig_hit_batch(assembler.state['cxn'], batch)
+    db_atram.insert_contig_hit_batch(asm.state['cxn'], batch)
 
 
-def save_contigs(assembler, all_hits):
+def save_contigs(asm, all_hits):
     """Save the contigs to the database."""
     batch = []
     high_score = 0
-    with open(assembler.file['output']) as in_file:
+    with open(asm.file['output']) as in_file:
         for contig in SeqIO.parse(in_file, 'fasta'):
-            contig_id = assembler.parse_contig_id(contig.description)
+            contig_id = asm.parse_contig_id(contig.description)
             if contig_id in all_hits:
                 hit = all_hits[contig_id]
                 batch.append((
-                    assembler.state['iteration'],
+                    asm.state['iteration'],
                     contig.id,
                     str(contig.seq),
                     contig.description,
@@ -289,29 +292,29 @@ def save_contigs(assembler, all_hits):
                     hit['hit_from'],
                     hit['hit_to'],
                     hit['hit_strand']))
-    db_atram.insert_assembled_contigs_batch(assembler.state['cxn'], batch)
+    db_atram.insert_assembled_contigs_batch(asm.state['cxn'], batch)
 
     return high_score
 
 
-def create_query_from_contigs(args, assembler):
+def create_query_from_contigs(args, asm):
     """Crate a new file with the contigs used as the next query."""
     log.info('Creating new query files: iteration {}'.format(
-        assembler.state['iteration']))
+        asm.state['iteration']))
 
     query_dir = join(args['temp_dir'], 'queries')
     os.makedirs(query_dir, exist_ok=True)
 
-    query_file = assembler.file_prefix() + 'long_reads.fasta'
+    query_file = asm.file_prefix() + 'long_reads.fasta'
     query = join(query_dir, query_file)
-    assembler.file['long_reads'] = query
+    asm.file['long_reads'] = query
 
     with open(query, 'w') as query_file:
         for row in db_atram.get_assembled_contigs(
-                assembler.state['cxn'],
-                assembler.state['iteration'],
-                assembler.args['bit_score'],
-                assembler.args['contig_length']):
+                asm.state['cxn'],
+                asm.state['iteration'],
+                asm.args['bit_score'],
+                asm.args['contig_length']):
             util.write_fasta_record(query_file, row[0], row[1])
 
     return query
