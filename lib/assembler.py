@@ -52,6 +52,13 @@ def command_line_args(parser):
             into np=<int>.""")
 
     group.add_argument(
+        '--abyss-paired-ends', action='store_true',
+        help="""Abyss: Normally, we put all of the input sequences in to the
+            -se argument. If this is true then we will put paired end sequences
+            into the -in argument with any residual single ends into the -se
+            argument.""")
+
+    group.add_argument(
         '--bowtie2', action='store_true',
         help="""Use bowtie2 during assembly. Trinity: This will prevent
             --no_bowtie from being passed to Trinity.""")
@@ -92,7 +99,8 @@ def command_line_args(parser):
 
     group.add_argument(
         '--abyss-p', type=int,
-        help="""Abyss: Minimum sequence identity of a bubble [0.9].""")
+        help="""Abyss: Minimum sequence identity of a bubble. Enter a single
+            digit integer [0-9].""")
 
 
 def default_kmer(kmer, assembler):

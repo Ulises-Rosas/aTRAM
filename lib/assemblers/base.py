@@ -177,9 +177,10 @@ class BaseAssembler:  # pylint: disable=too-many-public-methods
                 open(self.file['single_2'], 'w') as end_2, \
                 open(self.file['single_any'], 'w') as end_any:
 
-            for row in db_atram.get_blast_hits_by_end_count(
-                    self.state['cxn'], self.state['iteration'], 1):
+            rows = db_atram.get_blast_hits_by_end_count(
+                self.state['cxn'], self.state['iteration'], 1)
 
+            for row in rows:
                 if row['seq_end'] == '1':
                     out_file = end_1
                     seq_end = '1'
@@ -237,7 +238,7 @@ class BaseAssembler:  # pylint: disable=too-many-public-methods
                 self.output_assembled_contig(output_file, contig)
 
     def write_all_contigs(self, prefix):
-        """Write all contigs to a final ouput file."""
+        """Write all contigs to a final output file."""
         count = db_atram.all_assembled_contigs_count(self.state['cxn'])
         if not count:
             return
