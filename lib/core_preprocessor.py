@@ -105,6 +105,7 @@ def create_all_blast_shards(args, shard_list):
 
     One process for each blast DB shard.
     """
+    # MANAGER HERE
     log.info('Making blast DBs')
 
     with multiprocessing.Pool(processes=args['cpus']) as pool:
@@ -132,7 +133,7 @@ def create_one_blast_shard(args, shard_params, shard_index):
 
     fill_blast_fasta(args['blast_db'], fasta_path, shard_params)
 
-    blast.create_db(args['temp_dir'], fasta_path, shard)
+    blast.create_db(args['temp_dir'], fasta_path, shard, logit = False)
 
 
 def fill_blast_fasta(blast_db, fasta_path, shard_params):
