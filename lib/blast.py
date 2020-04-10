@@ -11,13 +11,11 @@ from . import log
 from . import util
 
 
-def create_db(temp_dir, fasta_file, shard, logit = True):
+def create_db(temp_dir, fasta_file, shard):
     """Create a blast database."""
     cmd = 'makeblastdb -dbtype nucl -in {} -out {}'
     cmd = cmd.format(fasta_file, shard)
-    
-    if logit:
-        log.subcommand(cmd, temp_dir)
+    log.subcommand(cmd, temp_dir)
 
 
 def against_sra(args, state, hits_file, shard):
