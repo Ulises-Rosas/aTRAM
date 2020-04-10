@@ -174,5 +174,6 @@ def parse_command_line():
 
 
 if __name__ == '__main__':
+    __spec__ = None
     ARGS = parse_command_line()
     preprocess(ARGS)
