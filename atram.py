@@ -214,5 +214,6 @@ def find_programs(args):
 
 
 if __name__ == '__main__':
+    __spec__ = None
     ARGS = parse_command_line()
     assemble(ARGS)
