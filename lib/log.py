@@ -75,7 +75,8 @@ def subcommand(cmd, temp_dir, timeout=None):
     Note: stdout=PIPE is blocking and large logs cause a hang.
     So we don't use it.
     """
-    LOGGER.debug(cmd)
+    if LOGGER is not None:
+        LOGGER.debug(cmd)
 
     with tempfile.NamedTemporaryFile(mode='w', dir=temp_dir) as log_output:
         try:
@@ -89,7 +90,7 @@ def subcommand(cmd, temp_dir, timeout=None):
             with open(log_output.name) as log_input:
                 for line in log_input:
                     line = line.strip()
-                    if line:
+                    if line and LOGGER is not None:
                         LOGGER.debug(line)
 
 
